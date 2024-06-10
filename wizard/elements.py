@@ -18,4 +18,6 @@ class State:
         return self.elements == other.elements
     
     def __hash__(self):
-        return hash(tuple(self.elements))
+        elems = list(self.elements)
+        elems.sort()
+        return hash(tuple(elems))

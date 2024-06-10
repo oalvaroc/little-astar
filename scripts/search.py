@@ -1,6 +1,11 @@
 import wizard
-import json
+import wizard.heuristic as wh
+import wizard.astar2 as wa
+
 import pprint
+import json
+import os
+
 
 def load(file) -> dict:
     with open(file) as f:
@@ -46,22 +51,35 @@ if __name__ == "__main__":
     elements, rules = transform_dataset2(elements, rules)
 
     n = int(input('goal > '))
-
     goal = wizard.Element(n)
-    start = wizard.State(elements[:4])
-    solution = wizard.astar(start, goal, rules)
-    
-    state = None
-    path = []
+    initial = wizard.State(elements[:4])
 
-    for k in solution.keys():
-        if goal in k.elements:
-            state = k
-            path.append(k)
+    if not os.path.exists('final-states.json'):
+        final_states = {}
+        print('generating final-states.json')
+        for elem in elements:        
+            print(f'searching final state {elem}')
+            final_states[elem] = wa.bfs_final_state(initial, rules, elem)
 
-    while state:
-        parent = solution[state]
-        path.append(parent)
-        state = parent
+        with open('final-states.json', 'w+') as f:
+            obj = {}
+            for elem in final_states:
+                state = final_states[elem]
+                d = [e.id for e in state.elements]
+                d.sort()
+                obj[f'{elem.id}'] = d
+            json.dump(obj, f)
 
-    pprint.pp(list(reversed(path)))
+    with open('final-states.json') as f:
+        final_states = json.load(f)
+
+    final_state = wizard.State([wizard.Element(int(i)) for i in final_states[f'{goal.id}']])
+    print(f'final state: {final_state}')
+    solution = wa.astar(initial, final_state, rules)
+
+    print('solution:')
+    pprint.pp(wa.build_path(final_state, solution), indent=2)
+
+    with open('solution.txt', 'w+') as f:
+        for k, v in solution.items():
+            f.write(f"{k}: {v}\n")
