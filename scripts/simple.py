@@ -3,7 +3,7 @@ Generate a subset of little alchemy elements
 """
 import json
 
-NUM_ELEMENTS = 10
+MAX_ELEMENTS = 100
 
 def load(file) -> dict:
     with open(file) as f:
@@ -17,16 +17,17 @@ if __name__ == "__main__":
     base = load("data/base.580.json")
     names = load("data/names.580.json")
 
+    num_elements = min(int(input('> no. of elements: ')), MAX_ELEMENTS)
     print(f"Original: {len(names)} elements")
 
-    newnames = [{str(i): names[str(i)]} for i in range(1, NUM_ELEMENTS + 1)]
+    newnames = {str(i): names[str(i)] for i in range(1, num_elements + 1)}
 
     newbase = []
-    for i in range(1, NUM_ELEMENTS + 1):
+    for i in range(1, num_elements + 1):
         parents = base[str(i)].get("parents", [])
         newparents = []
         for p in parents:
-            if p[0] < NUM_ELEMENTS and p[1] < NUM_ELEMENTS:
+            if p[0] < num_elements and p[1] < num_elements:
                 newparents.append(p)
         newbase.append({str(i): newparents})
 

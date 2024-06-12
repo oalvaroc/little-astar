@@ -1,22 +1,20 @@
-import wizard
-import wizard.heuristic as wh
-import wizard.astar2 as wa
+import wizard as w
 
 import pprint
 import json
-import os
+
+import graphviz
 
 
 def load(file) -> dict:
     with open(file) as f:
         return json.load(f)
 
+
 def transform_dataset(elements: list[map], rules: list[map]):
     newelements = []
-    for elem in elements:
-        key = list(elem.keys())[0]
-        value = list(elem.values())[0]
-        newelements.append(wizard.Element(int(key)))
+    for id in elements:
+        newelements.append(w.Element(int(id)))
 
     newrules = {}
     for rule in rules:
@@ -24,62 +22,53 @@ def transform_dataset(elements: list[map], rules: list[map]):
         val = list(rule.values())[0]
         newval = []
         for p1, p2 in val:
-            newval.append([wizard.Element(p1), wizard.Element(p2)])
-        newrules[wizard.Element(int(key))] = newval
+            newval.append([w.Element(p1), w.Element(p2)])
+        newrules[w.Element(int(key))] = newval
 
     return newelements, newrules
 
-def transform_dataset2(elements, rules):
-    newelements = []
-    for elem in elements.keys():
-        newelements.append(wizard.Element(int(elem)))
 
-    newrules = {}
-    for key, val in rules.items():
-        key = int(key)
-        parents = val.get("parents", [])
-        newval = []
-        for p1, p2 in parents:
-            newval.append([wizard.Element(p1), wizard.Element(p2)])
-        newrules[wizard.Element(int(key))] = newval
+def element_name(elements: map, elem: w.Element):
+    return elements[str(elem.id)]
 
-    return newelements, newrules
+
+def plot_solution(solution, goal, elements, cost):
+    dot = graphviz.Digraph('Solution', format="png")
+    cost = 0
+
+    state = None
+    path = []
+    for s in solution:
+        if goal in s.elements:
+            state = s
+
+    path.append(goal)
+    while state:
+        step = solution[state]
+        if step is None:
+            break
+        path.append(step.rule)
+        dot.node(f'_{step.rule[0].id}', element_name(elements, step.rule[0]))
+        dot.node(f'_{step.rule[1].id}', element_name(elements, step.rule[1]))
+        dot.node(f'_{step.rule[2].id}', element_name(elements, step.rule[2]))
+        dot.edge(f'_{step.rule[0].id}', f'_{step.rule[2].id}')
+        dot.edge(f'_{step.rule[1].id}', f'_{step.rule[2].id}')
+        cost += 1
+        state = step.parent
+
+    dot.node(f'_{goal.id}', label=f"{element_name(elements, goal)}\ncost={cost}")
+    dot.render('solution')
+    pprint.pp(list(reversed(path)))
+
 
 if __name__ == "__main__":
-    rules = load('data/base.580.json')
-    elements = load('data/names.580.json')
-    elements, rules = transform_dataset2(elements, rules)
+    rules = load('data/simple-base.json')
+    elements_m = load('data/simple-names.json')
+    elements, rules = transform_dataset(elements_m, rules)
 
     n = int(input('goal > '))
-    goal = wizard.Element(n)
-    initial = wizard.State(elements[:4])
+    goal = w.Element(n)
+    initial = w.State(elements[:4])
 
-    if not os.path.exists('final-states.json'):
-        final_states = {}
-        print('generating final-states.json')
-        for elem in elements:        
-            print(f'searching final state {elem}')
-            final_states[elem] = wa.bfs_final_state(initial, rules, elem)
-
-        with open('final-states.json', 'w+') as f:
-            obj = {}
-            for elem in final_states:
-                state = final_states[elem]
-                d = [e.id for e in state.elements]
-                d.sort()
-                obj[f'{elem.id}'] = d
-            json.dump(obj, f)
-
-    with open('final-states.json') as f:
-        final_states = json.load(f)
-
-    final_state = wizard.State([wizard.Element(int(i)) for i in final_states[f'{goal.id}']])
-    print(f'final state: {final_state}')
-    solution = wa.astar(initial, final_state, rules)
-
-    print('solution:')
-    pprint.pp(wa.build_path(final_state, solution), indent=2)
-
-    with open('solution.txt', 'w+') as f:
-        for k, v in solution.items():
-            f.write(f"{k}: {v}\n")
+    solution, cost = w.astar(initial, goal, rules, elements_m, draw=True)
+    plot_solution(solution, goal, elements_m, cost)

@@ -1,7 +1,10 @@
 import heapq
 from dataclasses import dataclass, field
 
-from .elements import State, Element
+from .elements import State, Element, SolutionStep
+
+import graphviz
+
 
 @dataclass(order=True)
 class PrioritizedState:
@@ -46,24 +49,36 @@ def heuristic(state: State, goal: Element, rules):
 
     state_level = max([levels[elem] for elem in state.elements])
     goal_level = levels[goal]
-    if goal_level < state_level:
-        return 1
-    return goal_level - state_level + 1
+    if state_level >= goal_level and goal not in state.elements:
+        return float('inf')
+    return goal_level - state_level
 
-def expand(rules, state: State):
+def expand(rules, state: State, goal: Element):
     newelements = set()
 
     for elem, parents in rules.items():
         if elem in state.elements:
             continue
 
+        if elem.id > goal.id:
+            continue
+
         for p1, p2 in parents:
             if p1 in state.elements and p2 in state.elements:
-                newelements.add(elem)
+                if max([levels[i] for i in (state.elements | {elem})]) > levels[goal]:
+                    continue
+
+                p1_id, p2_id = sorted([p1.id, p2.id])
+                newelements.add((Element(p1_id), Element(p2_id), elem))
 
     return newelements
 
-def astar(start: State, goal: State, rules: list):
+def state2dot(state: State, cost, heur, fscore, elem_map: map):
+    elem_row = (' | '.join([elem_map[str(e.id)] for e in state.elements]))
+    f_row = f"f = {cost} + {heur} = {fscore}"
+    return graphviz.nohtml(f"{'{' + elem_row + '}'} | {f_row}")
+
+def astar(start: State, goal: Element, rules: list, elem_map: map, draw=False):
     opened = []
     openset = set()
     closeset = set()
@@ -71,6 +86,8 @@ def astar(start: State, goal: State, rules: list):
     # pre-compute levels
     for elem, _ in rules.items():
         level(elem, rules)
+
+    print(f'goal level: {levels[goal]}')
 
     g = {}
     g[start] = 0
@@ -84,24 +101,47 @@ def astar(start: State, goal: State, rules: list):
     heapq.heappush(opened, PrioritizedState(f[start], start))
     openset.add(start)
 
+    best_state = None
+
+    if draw:
+        dot = graphviz.Digraph('A* Search Tree', 
+                               format="png",
+                               node_attr={'shape': 'record'},
+                               graph_attr={"rankdir": "LR"})
+        dot.node(str(start), state2dot(start, 0, f[start], f[start], elem_map))
+
     while opened:
         current = heapq.heappop(opened).state
-        if goal in current.elements:
-            return solution
+        if len(opened) % 1000 == 0:
+            print(f'states opened: {len(opened)} max level (current): {max([levels[i] for i in current.elements])}')
+            print(current)
 
-        for child in expand(rules, current):
-            newstate = State([*current.elements, child])
+        if goal in current.elements:
+            best_state = current
+            dot.node(str(current), color="red")
+            print(f'found new best: {best_state}')
+            break
+
+        for p1, p2, child in expand(rules, current, goal):
+            newstate = State(current.elements | {child})
+
             newg = g[current] + 1
-            newf = newg + heuristic(newstate, goal, rules)
+            heur = heuristic(newstate, goal, rules)
+            newf = newg + heur
 
             if newstate not in openset and newstate not in closeset:
                 g[newstate] = newg
                 f[newstate] = newf
                 heapq.heappush(opened, PrioritizedState(f[newstate], newstate))
                 openset.add(newstate)
-                solution[newstate] = current
-            elif (newstate in openset or newstate in closeset) and newg < g[newstate]:
-                solution[newstate] = current
+                solution[newstate] = SolutionStep(current, (p1, p2, child))
+
+                if draw:
+                    dot.node(str(newstate), state2dot(newstate, newg, heur, newf, elem_map))
+                    dot.edge(str(current), str(newstate))
+
+            elif newg < g[newstate]:
+                solution[newstate] = SolutionStep(current, (p1, p2, child))
                 f_old = f[newstate]
                 g[newstate] = newg
                 f[newstate] = newf
@@ -110,11 +150,19 @@ def astar(start: State, goal: State, rules: list):
                     opened.remove(PrioritizedState(f_old, newstate))
                     heapq.heapify(opened)
                     heapq.heappush(opened, PrioritizedState(f[newstate], newstate))
+                    openset.add(newstate)
                     closeset.remove(newstate)
+
+                    if draw:
+                        dot.node(str(newstate), state2dot(newstate, newg, heur, newf, elem_map))
+                        dot.edge(str(current), str(newstate))
                 except:
                     pass
 
         openset.remove(current)
         closeset.add(current)
-    
-    return solution
+
+    if draw:
+        dot.render(f'astar-tree-{elem_map[str(goal.id)]}')
+
+    return solution, g.get(best_state, float('inf'))

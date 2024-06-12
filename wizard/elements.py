@@ -21,3 +21,8 @@ class State:
         elems = list(self.elements)
         elems.sort()
         return hash(tuple(elems))
+    
+class SolutionStep:
+    def __init__(self, parent: State, rule: tuple[Element, Element, Element]):
+        self.parent = parent
+        self.rule = rule
