@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from .elements import State, Element, SolutionStep
 
 import graphviz
-
+import math
 
 @dataclass(order=True)
 class PrioritizedState:
@@ -43,15 +43,19 @@ def level(elem: Element, rules):
 
     return levels[elem]
 
-def heuristic(state: State, goal: Element, rules):
+def heuristic_bad(state: State, goal: Element, rules):
+    state_level = max([levels[elem] for elem in state.elements])
+    return abs(state_level - levels[goal])
+
+def heuristic_good(state: State, goal: Element, rules):
     if goal in state.elements:
         return 0
-
     state_level = max([levels[elem] for elem in state.elements])
-    goal_level = levels[goal]
-    if state_level >= goal_level and goal not in state.elements:
+    if state_level > levels[goal]:
         return float('inf')
-    return goal_level - state_level
+    
+    h = math.log2(levels[goal] - min(2*state_level + 1, levels[goal]) + 1)
+    return h + 1
 
 def expand(rules, state: State, goal: Element):
     newelements = set()
@@ -78,7 +82,7 @@ def state2dot(state: State, cost, heur, fscore, elem_map: map):
     f_row = f"f = {cost} + {heur} = {fscore}"
     return graphviz.nohtml(f"{'{' + elem_row + '}'} | {f_row}")
 
-def astar(start: State, goal: Element, rules: list, elem_map: map, draw=False):
+def astar(start: State, goal: Element, rules: list, elem_map: map, draw=False, admissible=True):
     opened = []
     openset = set()
     closeset = set()
@@ -87,7 +91,12 @@ def astar(start: State, goal: Element, rules: list, elem_map: map, draw=False):
     for elem, _ in rules.items():
         level(elem, rules)
 
-    print(f'goal level: {levels[goal]}')
+    print(f'goal level: {levels[goal]} {elem_map[str(goal.id)]}')
+
+    if admissible:
+        heuristic = heuristic_good
+    else:
+        heuristic = heuristic_bad
 
     g = {}
     g[start] = 0
@@ -112,10 +121,6 @@ def astar(start: State, goal: Element, rules: list, elem_map: map, draw=False):
 
     while opened:
         current = heapq.heappop(opened).state
-        if len(opened) % 1000 == 0:
-            print(f'states opened: {len(opened)} max level (current): {max([levels[i] for i in current.elements])}')
-            print(current)
-
         if goal in current.elements:
             best_state = current
             dot.node(str(current), color="red")
